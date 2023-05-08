@@ -1,0 +1,259 @@
+---
+title: "Aula 6 - Dados espaciais"
+author: "Gabriel Bertolini"
+date: "18/07/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Dados espaciais
+
+- Dados espaciais apresentam peculiaridades em relação aos objetos que havíamos trabalhado anteriormente
+- Para trabalhar com dados espaciais, devemos utilizar pacote sf (ou outros como STARS, RASTER, TERRA)
+
+- Quais são as informações necessárias para configurar um dado espacial
+ - Coordenadas (geográficas ou projetada)
+ - Coordinate Reference System (CRS) 
+ - Vamos usar como exemplo o banco de dados "volcano"
+
+```{r}
+volcano<-read_excel("./dataset/volcano.xlsx") %>% 
+  as_tibble()
+
+View(volcano)
+```
+---
+
+- BD apresenta colunas latitude e longitute em coordenadas geográficas em graus decimais 
+- Primeiro vamos importar pacote sf que vai transformar esse banco de dados em objeto espacial
+- Função "st_as_sf" transforma banco de dados em dados espaciais
+  - definir qual coluna é o x e y / long e lat no parâmetro coords
+
+```{r}
+#install.packages("sf")
+#install.packages("mapview")
+
+library(sf) # Pacote que ensina o R a trabalhar com dados espaciais
+library(tidyverse)
+library(readxl)
+library(mapview) # pacote para visualização rapida de dados espaciais
+
+
+volc<-read_excel("./dataset/volcano.xlsx") %>% 
+      as_tibble() %>% 
+      st_as_sf(coords=c("longitude","latitude"),
+               crs=4326)
+
+
+
+# como setar sistema de coordenada?
+
+volc %>% 
+  filter(region=="South America") %>% 
+  mapview(zcol="primary_volcano_type")
+
+
+```
+---
+
+- Sistema de referência do banco de dados é WGS-84 lat/long
+- Vamos pesquisar qual o codigo desse sistema no site "https://epsg.io/"
+- Podemos trocar o sistema por algum sistema de coordenadas projetada, usando a função st_transform()
+
+```{r}
+volc<-volcano %>% st_as_sf(coords=c("longitude","latitude"),
+                     crs=4326) # WGS 84
+
+volc<- volcano%>%
+              mutate(X=longitude,
+                  Y=latitude) %>% 
+              dplyr::select(X,Y,longitude,latitude) %>% 
+                    st_as_sf(coords=c("longitude","latitude"), 
+                          crs=4326) %>% 
+                  st_transform(crs = 3857) %>% 
+                  st_transform(crs=4326)
+                  dplyr::select(X,Y)
+  
+  # WGS84 projetada (pseudo-mercator)
+
+```
+---
+
+- pacote SF apresenta uma série de funções para lidar com GIS, por exemplo
+  - st_as_sf() - Converter Banco de dados para dados espacial
+  - st_read() - Ler arquivos 
+  - st_transform() - Transformar sistema de coordenada
+  - st_intersection() - Clip
+  
+---
+- Vamos plotar esses dados e ver como ficar..
+- para isso, vamos utilizar o pacote de mapas interativos mapview()
+
+
+
+```{r}
+library(mapview)
+volcano %>% st_as_sf(coords=c("longitude","latitude"), 
+                     crs=4326) %>% 
+            mapview()
+```
+---
+- parâmetro zcol ="nome_da_coluna" adiciona cor ao pontos
+```{r}
+library(mapview)
+volcano %>% 
+  st_as_sf(coords=c("longitude","latitude"), crs=4326) %>% 
+  mapview(zcol="elevation")
+
+```
+
+--- 
+# Exercício 1
+- Mapear vulcões com maior georisco associados a populações de 5, 10 e 30 km de stratovulcoes na África
+
+# 5km
+```{r}
+
+volcano %>% mutate(pop_5km=as.double(population_within_5_km),
+                   pop_5km=if_else(pop_5km==0,0,log10(pop_5km))) %>% 
+  st_as_sf(coords=c("longitude","latitude"), crs=4326) %>% 
+  mapview(zcol="pop_5km")
+```
+
+# 10km
+```{r}
+volcano %>% mutate(pop_10km=as.double(population_within_10_km),
+                   pop_10km=if_else(pop_10km==0,0,log10(pop_10km))) %>% 
+  st_as_sf(coords=c("longitude","latitude"), crs=4326) %>% 
+mapview(zcol="pop_10km")
+```
+
+# 30km
+```{r}
+
+volcano %>% mutate(pop_30km=as.double(population_within_30_km),
+                   pop_30km=if_else(pop_30km==0,0,log10(pop_30km))) %>% 
+  st_as_sf(coords=c("longitude","latitude"), crs=4326) %>% 
+mapview(zcol="pop_30km")
+
+
+```
+
+
+# Exercício 2
+- Mapear tipos de vulcões
+
+# 5km
+```{r}
+library(stringr)
+volcano %>% 
+  mutate(primary_volcano_type = str_to_lower(primary_volcano_type),
+         primary_volcano_type = str_replace(primary_volcano_type, " ", "_"),
+         primary_volcano_type = str_replace(primary_volcano_type, "\\s*\\([^\\)]+\\)", ""),
+         primary_volcano_type = str_replace(primary_volcano_type, "[:punct:]", "")) %>% 
+  st_as_sf(coords=c("longitude","latitude"), crs=4326) %>% 
+  mapview(zcol="primary_volcano_type")
+
+
+```
+
+
+
+---
+# API de dados
+
+- Pacote geobr (Ver dados disponíveis em https://github.com/ipeaGIT/geobr)
+- Pacote compila diversos bancos oficiais do BR (??geobr::intro_to_geobr)
+- codigo IBGE dos municipios BR (https://www.ibge.gov.br/explica/codigos-dos-municipios.php)
+
+```{r}
+#install.packages("geobr")
+library(geobr)
+
+# Dados do pacote GEOBR estão no CRS oficial do Brasil SIRGAS 2000 (CRS=4674)
+# Porto Alegre = 4314902
+
+# Download e conversao para UTM22 do limite do municipio de Porto Alegre-RS
+poa <- read_municipality(code_muni= 4314902) %>% 
+  st_transform(crs=32722)
+
+# Download e conversao para UTM22 do limite dos estados brasileiros
+uf<-read_state("all",year=2017) %>% 
+  filter(abbrev_state %in% c("RS","SC","PR"))%>% 
+  st_transform(crs=32722)
+
+# Download e conversao para UTM22 do limite dos estados brasileiros
+BRASIL<-read_country(year = 2017) %>% 
+  st_transform(crs=32722) 
+
+
+
+uf %>% 
+  st_intersection(.,poa) %>% 
+  ggplot()+
+  geom_sf()
+
+
+
+  ggplot()+
+  geom_sf(data=BRASIL,fill="black",col="white")+
+  geom_sf(data=uf,fill="red",alpha=0.5)+
+  geom_sf(data=poa,col="black",fill="blue")
+
+```
+
+
+# Exercício 3
+
+- Fazer mapa geológico de alguma cidade do RS usando banco de dados "riograndedosul_lito.shp
+- Exemplo de como importar shapefiles diretamente no R
+- Função sf::st_read()
+
+
+
+```{r}
+# PASSO 1
+# BAIXAR
+# TRANSFORMAR CRS
+# CLIPAR
+
+# Mapa CIDADE
+poa <- read_municipality(code_muni= 4314902) %>% 
+  st_transform(crs=32722)
+
+# GEO
+GEO<-st_read("./SHAPES/riograndedosul_lito.shp") %>% 
+  st_transform(crs=32722) %>% 
+  st_intersection(.,poa) %>% 
+  mutate(NOME=factor(NOME_UNIDA,
+                     levels=c("Depósitos aluvionares","Depósitos de barreira holocênica - Depósitos de praiais e cristas lagunas","Depósitos eluviais e coluviais","Depósitos de turfeira","Depósitos de barreira holocênica - depósitos deltáicos","Depósitos de planície de inundação",
+                       "Arroio dos Ratos","Serra do Herval","Metagranitóides foliados","Cerro Grande"),
+         labels=c("Depósito Quaternário","Depósito Quaternário","Depósito Quaternário","Depósito Quaternário","Depósito Quaternário","Depósito Quaternário","Gnaisse Arroio dos Ratos","Granito Serra do Herval","Granitoides Foliados","Granito Cerro Grande")))
+
+# STR
+STR<-st_read("./SHAPES/riograndedosul_estrut.shp") %>% 
+  st_transform(crs=32722) %>% 
+  st_intersection(.,poa)
+
+
+# PASSO 2 (MAPA)
+#install.packages("ggspatial")
+library(ggspatial)
+
+
+ggplot()+
+  geom_sf(data=GEO,aes(fill=NOME))+
+ # scale_fill_manual(values=c("wheat1","wheat2","wheat3","yellow1","yellow2","yellow3","red1","purple4","red4","blue3"))+
+  scale_fill_manual(values=c("wheat1","red1","purple4","red4","blue3"))+
+  geom_sf(data=STR)+
+  labs(fill="Unidades estratigráficas",
+       y="Norte (m)",
+       x="Leste (m)")+
+  annotation_scale(location = "bl") +
+  annotation_north_arrow(location = "tr", which_north = "true")
+
+```
+
+
+

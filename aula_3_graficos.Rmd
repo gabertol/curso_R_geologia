@@ -1,0 +1,149 @@
+---
+title: "Aula 3- Gráficos"
+author: "Dr. Gabriel Bertolini"
+date: "2022-10-20"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#1 Instalar pacotes
+```{r}
+#install.packages("ggtern")
+```
+
+#2 Importar bibliotecas
+```{r}
+library(tidyverse)
+#library(ggtern)
+```
+
+#3 Importar os bancos
+```{r}
+BD<-read.csv("./dataset/geoquim_granite.csv",
+             sep=";") %>% 
+    as_tibble()
+
+BD
+```
+
+#4 Graficos ggplot2
+#4.1 Scatterplot 
+```{r}
+BD %>% 
+ # select(SiO2,TiO2) %>% 
+  ggplot(aes(x=TiO2,y=SiO2))+
+  geom_point()+
+  scale_x_log10()
+
+#ggsave("./plots/plot1.jpg")
+
+BD %>% 
+  select(SiO2,TiO2,MgO,Tectonic_setting) %>%
+  mutate(transp=ifelse(Tectonic_setting=="CONTINENTAL FLOOD BASALT",0.8,0.3)) %>% 
+  ggplot(aes(x=SiO2,
+             y=TiO2,
+             size=MgO,
+             color=Tectonic_setting))+
+  #geom_point(alpha=0.5)
+  geom_point(aes(alpha=transp)) 
+
+BD %>% 
+  select(SiO2,TiO2,MgO,Tectonic_setting) %>% 
+  ggplot(aes(x=SiO2,y=TiO2,size=MgO,col=Tectonic_setting))+
+  geom_point()+
+  labs(x="Óxidos de Silicio",
+       y="Óxido de Titânio",
+       size="Proporção de Magnésio",
+       col="Ambiente tectonico",
+       title = " Relação entre Silicio e Titânio em diferentes ambientes geotectônicos")+
+  facet_wrap(~Tectonic_setting)
+
+BD %>% select(SiO2,TiO2,MgO,Tectonic_setting,TASMiddlemostPlut) %>% 
+  ggplot(aes(x=SiO2,y=TiO2,size=MgO,col=Tectonic_setting))+
+  geom_point()+
+  facet_grid(TASMiddlemostPlut~Tectonic_setting)
+ 
+```
+
+#4.2 Desafio !!
+
+Qual a distribuição das séries de granitos utilizando o diagrama P-Q (Debon & Fort, 1983, 1988)
+
+P = K - (Na + Ca)
+Q = Si/3 - (K + Na + 2*(Ca/3))
+
+P vs Q
+cor como a subgroup
+
+```{r}
+# SELECT
+# MUTATE
+
+BD %>% select(K=K2O,Na=Na2O,Si=SiO2,Ca=CaO,SubGroup) %>% 
+       mutate(P = K - (Na + Ca),
+              Q = Si/3 - (K + Na + 2*(Ca/3))) %>% 
+       ggplot(aes(P,Q,col=SubGroup))+
+       geom_point()+
+       geom_smooth(method="lm")
+
+BD %>% select(K=K2O,Na=Na2O,Si=SiO2,Ca=CaO,SubGroup) %>% 
+       mutate(P = K - (Na + Ca),
+              Q = Si/3 - (K + Na + 2*(Ca/3))) %>% 
+       ggplot(aes(P,Q,col=SubGroup))+
+       geom_point()+
+       geom_smooth(method="lm",col="black")+
+       facet_wrap(~SubGroup)
+       ggsave("./figura1.jpg")
+
+
+```
+
+#4.3 outros tipos de plots
+
+```{r}
+BD %>% 
+  select(SiO2,TiO2,MgO,Tectonic_setting) %>% 
+  ggplot(aes(x=Tectonic_setting,y=TiO2,fill=Tectonic_setting))+
+  geom_boxplot()
+
+BD %>% 
+  select(SiO2,TiO2,MgO,Tectonic_setting) %>% 
+  ggplot(aes(x=SiO2))+
+  geom_histogram()+
+  geom_vline(aes(xintercept=mean(SiO2)))+
+  geom_vline(col="red",aes(xintercept=median(SiO2)))
+
+
+BD %>% 
+  select(SiO2:P2O5) %>% 
+  mutate(across(.cols=SiO2:P2O5,as.numeric)) %>% 
+  pivot_longer(cols =SiO2:P2O5,
+               names_to = "element", 
+               values_to= "values") %>% 
+  group_by(element) %>%
+  mutate(media=median(values,na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  ggplot(aes(values))+
+  geom_histogram()+
+  geom_vline(col="red",aes(xintercept=media))+
+  facet_wrap(~element,scales = "free")
+
+ggsave()
+
+BD %>% 
+  select(SiO2,Tectonic_setting) %>% 
+  ggplot(aes(x=SiO2,fill=Tectonic_setting))+
+  geom_density(alpha=0.6)+
+  facet_wrap(~Tectonic_setting)
+
+
+BD %>% select(Q=Quartz,Ab=Albite,An=Anorthite,SubGroup) %>% 
+  ggtern(aes(Ab,Q,An,col=SubGroup))+
+  geom_point()+
+  ggtern::geom_confidence_tern()+
+  facet_wrap(~SubGroup)
+  
+
+```
+

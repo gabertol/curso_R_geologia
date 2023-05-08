@@ -1,0 +1,353 @@
+---
+title: "Aula 4- dados estratigráficos e ternários"
+author: "Gabriel Bertolini"
+date: "05/07/2021"
+subtitle: "Reproduzindo Geociência"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# (geo-) Ciência de dados
+
+- dados estratigráficos
+- dados ternários
+
+
+# dados estratigráficos
+
+- pacote tidypaleo
+- abstrações e funções otimizadas para dados estratigráficos
+
+```{r}
+#install.packages("tidypaleo")
+#install.packages("ggtern")
+
+library(tidyverse)
+library(tidypaleo)
+
+```
+
+---
+- Vamos explorar o pacote com os dados do artigo Santos et al., 2009
+
+```{r}
+
+distance <- read.csv("./dataset/santos_2009.csv") %>% 
+  as_tibble()
+
+```
+
+- Pergunta 1: qual relação do Ni em função da distância ate o sill?
+
+```{r}
+distance %>%
+  filter(!litho=="volcanic") %>% 
+  ggplot(aes(x = Ni, y = lower))+ 
+  geom_lineh()+
+  geom_point(size=2,
+             aes(color=litho))+
+  scale_y_reverse()+
+  geom_hline(yintercept = 0, col = "red", lty = 2, alpha = 0.7)+
+  labs(x="Niquel")+
+  theme_classic()
+
+```
+
+- Pergunta 2: o tipo de rocha afeta a interação entre sedimento e sill?
+```{r}
+distance %>%
+  filter(!litho=="volcanic") %>% 
+  select(lower,Co:Tm) %>% 
+ # mutate(across(.cols=Co:Tm,as.numeric)) %>% 
+  pivot_longer(cols =Co:Tm,
+               names_to = "element", 
+               values_to= "values") %>% 
+  ggplot(aes(x = values, y = lower)) +
+  geom_lineh() +
+  geom_point() +
+  scale_y_reverse()+
+  geom_hline(yintercept = 0, col = "red", lty = 2, alpha = 0.7)+
+  labs(y = "Depth (m)")+
+  facet_wrap(~element,scales="free",nrow=1)+
+  theme_classic()
+
+```
+
+
+---
+## Estudo de caso 1
+
+- Estudo de caso de petrofísica e petrologia de Bertolini et al. (2021)- busca entender a relação entre diagênese e petrofísica na interface lava-sedimento, com exemplo ns interação entre a Fm. Botucatu em contato e Fm. Serra Geral
+- Estudo de caso em análise de reservatório
+
+- 1) Explorar banco de dados "lvsd"
+- 2 Qual relação entre as velocidades das ondas P- e S- nos arenitos? (Modele)
+- 3) A porosidade controla a velocidade da onda sísmica? - (Modele)
+- 4) A estratigrafia controla a a diagênese?
+- 5) qual a relação entre a distancia até a lava e porosidade? e ondas sismicas?
+- 6) qual relação da diagênese e distância até a lava?
+- 7) e da provêniencia?
+
+---
+
+```{r}
+
+
+## Respostas- Estudo de caso 1
+
+# Estudo de caso 1```{r}
+#library(devtools)
+#install_version("ggplot2", version = "3.3.0", repos = "http://cran.us.r-project.org")
+
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(tidypaleo)
+
+
+lv<-read_csv("./dataset/petrophysics_bertolini_2020.csv") %>% 
+  unite(sample,c("Sample", "a"),sep = "-")
+
+sd_1<-read_excel("./dataset/petrography_bertolini_2020.xlsx",sheet=1)
+
+lvsd<-left_join(lv,sd_1,by="sample") %>% 
+      mutate(lava_1_base=lava_1,
+         lava_1_top=lava_1_base-exp_1,
+         lava_2_base=lava_2,
+         lava_2_top=lava_2_base-exp_2,
+          dis_1_top=lava_1_top-depth,
+         dis_1_base=depth-lava_1_base,
+         dis_2_top=lava_2_top-depth,
+         dis_2_base=depth-lava_2_base,
+         dis_l1=if_else(dis_1_base>0,dis_1_base,dis_1_top),
+         dis_l2=if_else(dis_2_base>0,dis_2_base,dis_2_top),
+         distance= case_when(is.na(dis_l2) | dis_l2<0 ~dis_l1,
+                             dis_l1>dis_l2~dis_l2,
+                             TRUE~dis_l1)) %>% 
+  write.csv(file = "lvsd.csv")
+  
+#1 Explorar banco de dados "lvsd"
+
+lvsd <- read_csv("lvsd.csv")
+
+lvsd %>% str()
+  
+lvsd %>% group_by(well) %>% 
+  summarise(across(starts_with("Por"), ~ mean(.x, na.rm = TRUE)))
+  
+lvsd %>% group_by(well) %>% 
+  summarise(across(starts_with("Comp"), ~ mean(.x, na.rm = TRUE)))
+  
+  
+
+#2 Qual relação entre as velocidades das ondas P- e S- nos arenitos? (Modele)
+
+
+lvsd %>% 
+  #drop_na(s_wave) %>% 
+  ggplot(aes(x=p_wave,y=s_wave))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  labs(title="Velocidade sísmica em arenitos da Fm. Botucatu")+
+  xlab("Onda P")+
+  ylab("Onda S")
+
+#3 A porosidade controla a velocidade da onda sísmica? - (Modele)
+
+lvsd %>% 
+  drop_na(s_wave) %>%
+  pivot_longer(cols = c(p_wave:s_wave),names_to = "var",values_to = "seismic_velocity") %>% 
+  ggplot(aes(x=porosity,y=seismic_velocity))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~var)+
+  labs(title="Velocidade sísmica e porosidade arenitos da Fm. Botucatu")
+
+
+#4 Qual a relação entre petrofisica e estratigrafia (well TG-227)?
+
+lvsd %>%
+  filter(well=="TG-227") %>% 
+  pivot_longer(cols = c(p_wave:s_wave,porosity, density),names_to = "var",values_to = "value") %>%
+  mutate(var=factor(var,levels = c("porosity","density","p_wave","s_wave"))) %>% 
+  ggplot(aes(x = value, y = depth)) +
+  geom_rect(mapping = aes(ymin = 283.45, 
+                          ymax = 298.10, 
+                          xmin = -Inf, 
+                          xmax = Inf), 
+            alpha = 0.2,
+            alpha=0.5,
+            fill = "gray",
+            inherit.aes = FALSE)+
+  geom_rect(mapping = aes(ymin = 298.10, 
+                          ymax = 340, 
+                          xmin = -Inf, 
+                          xmax = Inf), 
+            alpha = 0.2,
+            alpha=0.3,
+            fill = "lightyellow",
+            inherit.aes = FALSE)+
+  geom_hline(yintercept = c(283.45,298.10,340), col = "red", lty = 2, alpha = 0.7)+
+  geom_lineh() +
+  geom_point() +
+  scale_y_reverse() +
+  facet_geochem_gridh(vars(var), scales = "free") +
+  labs(x = NULL, y = "Depth (m)",
+       title = "Cretaceous Paraná Basin",
+       caption=" Petrophysical attributes variation in well TG-227. Pale-yellow- Sandstone, Gray- Basalt, Bertolini et al., 2021")+
+  theme_paleo()
+  
+
+#5 qual a relação entre a distancia até a lava e porosidade? e ondas sismicas?
+
+lvsd %>% 
+  pivot_longer(cols=c(porosity,s_wave,p_wave),names_to = "var",values_to = "values") %>% 
+  ggplot(aes(x=distance,y=values))+
+  geom_point(aes(color=well))+
+  scale_x_log10()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~var,scales="free")
+
+#6 qual relação da diagênese e distância até a lava?
+
+lvsd %>% 
+  pivot_longer(starts_with("cem"),names_to = "var",values_to = "values") %>% 
+  ggplot(aes(x=distance,y=values))+
+  geom_point(aes(color=well))+
+  scale_x_log10()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~var,scales="free")
+
+lvsd %>% 
+  pivot_longer(starts_with("con"),names_to = "var",values_to = "values") %>% 
+  ggplot(aes(x=distance,y=values))+
+  geom_point(aes(color=well))+
+  scale_x_log10()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~var,scales="free")
+
+#7  e da provêniencia?
+lvsd %>% 
+  pivot_longer(starts_with(c("qtz","f","lt")),names_to = "var",values_to = "values") %>% 
+  ggplot(aes(x=distance,y=values))+
+  geom_point(aes(color=well))+
+  scale_x_log10()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~var,scales="free")
+
+lvsd %>% 
+  pivot_longer(starts_with("gm"),names_to = "var",values_to = "values") %>% 
+  ggplot(aes(x=distance,y=values))+
+  geom_point(aes(color=well))+
+  scale_x_log10()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~var,scales="free")
+```
+
+--- 
+## GGTERN
+
+- Pacote ggtern para plotar diagramas ternários
+- Utiliza a mesma estrutura do ggplot2
+
+```{r}
+#install.packages("ggtern")
+library(ggtern)
+```
+
+---
+- Vamos explorar o pacote com o banco de dados de granutis Bonin et al., 2020
+
+```{r}
+dados <- read.csv("./dataset/geoquim_granite.csv", header = TRUE, sep = ";") %>% 
+  as_tibble()
+
+```
+
+- Qual relação entre tipos de feldspatos os ambientes tectônicos
+
+```{r}
+dados %>% 
+  ggtern(aes(x=Ab,y=An,z=Or))+
+  geom_point()
+
+dados %>% 
+  ggtern(aes(x=Ab,y=An,z=Or,col=Tectonic_setting))+
+  geom_point()
+
+dados %>% 
+  ggtern(aes(x=Ab,y=Or,z=An,col=Tectonic_setting))+
+  geom_point()+
+  facet_wrap(~Tectonic_setting)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+---
+## Estudo de caso 2
+
+-- O estudo pioneiro de Elkins, L. T. & Grove, T. L (1990) "Ternary Feldspar Experiments and Thermodynamic Models American Mineralogist"
+-- Elkins, L. T. & Grove, T. L. Ternary Feldspar Experiments and Thermodynamic Models American Mineralogist, Mineral Soc America, 1990, 75, 544-559
+
+- 1) Explorar banco de dados "Feldspar"
+- 2) Existe relação entre os teores dos componentes Ab, An e Or em feldspatos com:
+
+-- a) Tipos de feldspato?
+-- b) Temperatura?
+-- c) Pressão?
+
+- 3) Modelar isotermas e isóbaras
+
+---
+```{r}
+#1 - Explorar 
+data(Feldspar)
+Feldspar
+
+View(Feldspar)  # Abre janela estilo excel ou então, selecionar objeto-banco de dados e apertar F2
+
+Feldspar %>% str()
+
+Feldspar %>% 
+  group_by(Feldspar) %>% 
+  summarise(mean_Ab=mean(Ab),
+            mean_An=mean(An),
+            mean_Or=mean(Or))
+  
+
+#2a - Tipos de Feldspato
+
+ggtern(data=Feldspar,aes(x=An,y=Ab,z=Or)) +
+  ggplot2::geom_point(aes(color=Feldspar))
+
+#2b - Temperatura?
+
+ggtern(data=Feldspar,aes(x=An,y=Ab,z=Or)) + 
+    ggplot2::geom_point(aes(color=T.C))+
+    facet_wrap(~Feldspar)
+
+#2c - Pressão?
+ggtern::ggtern(data=Feldspar,aes(x=An,y=Ab,z=Or)) + 
+    ggplot2::geom_point(aes(color=P.Gpa))+
+    facet_wrap(~Feldspar)
+
+#3 - Modelo
+
+ggtern(data=Feldspar,aes(x=An,y=Ab,z=Or)) + 
+    ggtern::geom_crosshair_tern(aes(color=T.C,
+                   shape=Feldspar,
+                   size=P.Gpa))
+
+
+
+```
